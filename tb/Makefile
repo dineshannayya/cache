@@ -24,25 +24,42 @@ export ROOT_DIR := $(shell pwd)
 
 
 # Targets
-.PHONY: clean rtl gate help
+.PHONY: clean dcache_rtl dcache_rtl_dump icache_rtl icache_rtl_dump gate help
 
-default: clean rtl
+default: clean icache_rtl
 
-rtl: clean  
+dcache_rtl: clean  
 	@echo "Generating Random Dump file"
 	gcc hex_gen.c -o hex_gen
 	./hex_gen > dumpfile.hex
 	@echo "Running Verilog Simulation"
-	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  tb_top.sv  -o tb_top.vvp
-	vvp tb_top.vvp
+	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  dcache_tb_top.sv  -o dcache_tb_top.vvp
+	vvp dcache_tb_top.vvp
 
-rtl_dump: clean  
+dcache_rtl_dump: clean  
 	@echo "Generating Random Dump file"
 	gcc hex_gen.c -o hex_gen
 	./hex_gen > dumpfile.hex
 	@echo "Running Verilog Simulation"
-	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -DWFDUMP -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  tb_top.sv  -o tb_top.vvp
-	vvp tb_top.vvp
+	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -DWFDUMP -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  dcache_tb_top.sv  -o dcache_tb_top.vvp
+	vvp dcache_tb_top.vvp
+
+icache_rtl: clean  
+	@echo "Generating Random Dump file"
+	gcc hex_gen.c -o hex_gen
+	./hex_gen > dumpfile.hex
+	@echo "Running Verilog Simulation"
+	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  icache_tb_top.sv  -o icache_tb_top.vvp
+	vvp icache_tb_top.vvp
+
+icache_rtl_dump: clean  
+	@echo "Generating Random Dump file"
+	gcc hex_gen.c -o hex_gen
+	./hex_gen > dumpfile.hex
+	@echo "Running Verilog Simulation"
+	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -DWFDUMP -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  icache_tb_top.sv  -o icache_tb_top.vvp
+	vvp icache_tb_top.vvp
+
 
 gate: clean  
 	iverilog -g2012  -D GL -D SPEEDSIM  -DFUNCTIONAL -DSIM  -I./ -I ../synth/netlist/  -I ../src/model -I $(PDK_ROOT)/sky130A  tb_top.sv  -o tb_top.vvp

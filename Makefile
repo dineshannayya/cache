@@ -24,12 +24,14 @@ export ROOT_DIR := $(shell pwd)
 
 
 # Targets
-.PHONY: clean rtl gate synth help
+.PHONY: clean dcache_rtl icache_rtl gate synth help
 
-default: clean rtl
+default: icache_rtl
 
-rtl: 
-	cd tb && $(MAKE) rtl
+dcache_rtl: 
+	cd tb && $(MAKE) dcache_rtl
+icache_rtl: 
+	cd tb && $(MAKE) icache_rtl
 
 gate: synth
 	cd tb && $(MAKE) gate

@@ -63,7 +63,7 @@ later version.
 
 `include "cache_defs.svh"
 
-module dcache_tag_fifo #(parameter WD=8, parameter DP=4) ( 
+module icache_tag_fifo #(parameter WD=8, parameter DP=4) ( 
 	input logic                       clk,
 	input logic                       reset_n,
 	input logic                       flush,        // FIFO flush
@@ -71,16 +71,15 @@ module dcache_tag_fifo #(parameter WD=8, parameter DP=4) (
         input logic 	                  tag_wr,       // Tag Write Indication
         input logic 	                  tag_uwr,   // Tag Update
         input logic [$clog2(DP)-1:0]	  tag_uptr,     // Tag Memory Write Update Location
-	input type_dcache_tag_mem_s 	  tag_wdata,
+	input type_icache_tag_mem_s 	  tag_wdata,
 	output logic [$clog2(DP)-1:0]     tag_wptr,     // Tag Memory Write Current Location
-	output logic                      tag_hdirty,   // Hit location Dirty indication
 
 
 	input logic  [`TAG_XLEN-1:0]      tag_cmp_data,   // Tag Compare Data
         output logic [DP-1:0]             tag_hit,       // Tag Compare Hit 
+        output logic [DP-1:0]             tag_next_hit,  // Tag Next address Hit 
 	output logic [$clog2(DP)-1:0]     tag_hindex,    // Tag Hit Index
 	output logic [`TAG_XLEN-1:0]      tag_ctag,      // Current location Tag
-	output logic                      tag_cdirty,    // Current location Dirty indication
 
 
 	output logic             	  full,          // FIFO full
@@ -110,9 +109,19 @@ module dcache_tag_fifo #(parameter WD=8, parameter DP=4) (
    genvar tcnt;
    generate
    for (tcnt = 0; $unsigned(tcnt) < DP; tcnt=tcnt+1) begin : g_tag_check
-       type_dcache_tag_mem_s mem_data;
+       type_icache_tag_mem_s mem_data;
        assign mem_data = tag_mem[tcnt];
        assign tag_hit[tcnt] = mem_data.valid && (mem_data.tag == tag_cmp_data);
+   end
+   endgenerate
+  
+   // Check for Next Tag Hit 
+   genvar tcnt1;
+   generate
+   for (tcnt1 = 0; $unsigned(tcnt1) < DP; tcnt1=tcnt1+1) begin : g_tag1_check
+       type_icache_tag_mem_s mem_data;
+       assign mem_data = tag_mem[tcnt1];
+       assign tag_next_hit[tcnt1] = mem_data.valid && (mem_data.tag == (tag_cmp_data+1));
    end
    endgenerate
 
@@ -129,14 +138,12 @@ module dcache_tag_fifo #(parameter WD=8, parameter DP=4) (
    end
 
 // Dirty bit in Tag hit location
-type_dcache_tag_mem_s  tag_hrdata;   // Tag Hit Read Data
+type_icache_tag_mem_s  tag_hrdata;   // Tag Hit Read Data
 assign tag_hrdata =  tag_mem[tag_hindex];
-assign tag_hdirty = tag_hrdata.dirty;  
 
 // Dirty bit in Currently over-written tag locaton
-type_dcache_tag_mem_s  tag_crdata;   // Tag Hit Read Data
+type_icache_tag_mem_s  tag_crdata;   // Tag Hit Read Data
 assign tag_crdata  = tag_mem[tag_wptr];
-assign tag_cdirty = tag_crdata.dirty;  
 assign tag_ctag = tag_crdata.tag;  
 
 

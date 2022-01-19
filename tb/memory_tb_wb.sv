@@ -37,7 +37,7 @@ module ycr1_memory_tb_wb #(
     input  logic                                    wbd_mem_we_i          ,
     input  logic [31:0]                             wbd_mem_dat_i         ,
     input  logic [3:0]                              wbd_mem_sel_i         ,
-    input  logic [7:0]                              wbd_mem_bl_i          ,
+    input  logic [9:0]                              wbd_mem_bl_i          ,
     output logic [31:0]                             wbd_mem_dat_o         ,
     output logic                                    wbd_mem_ack_o         ,
     output logic                                    wbd_mem_lack_o        ,
@@ -140,8 +140,8 @@ assign mem_req_ack = (mem_req_ack_stall == 32'd0) ?  mem_req_ack_rnd : mem_req_a
 // Address command latch
 //-------------------------------------------------------------------------------
 logic       wbd_mem_stb_l;
-logic [7:0] mem_bl_cnt;
-logic [4:0] mem_ptr;
+logic [9:0] mem_bl_cnt;
+logic [31:0] mem_ptr;
 
 wire wbd_mem_stb_pedge = (wbd_mem_stb_l == 1'b0) && wbd_mem_stb_i;
 always @(negedge rst_n, posedge clk) begin
@@ -150,35 +150,35 @@ always @(negedge rst_n, posedge clk) begin
         wbd_mem_ack_o   = 1'b0;
         wbd_mem_lack_o  = 1'b0;
         wbd_mem_dat_o   = 'x;
-	mem_bl_cnt      = 8'h1;
+	mem_bl_cnt      = 10'h1;
 	mem_ptr         = 0;
         //if (test_file_init) $reamemh(test_file, memory);
     end else begin
 	wbd_mem_stb_l   = wbd_mem_stb_i;
 	if(wbd_mem_stb_pedge) begin
-	    mem_bl_cnt    = 8'h1;
-	    mem_ptr       =  0;
+	    mem_bl_cnt    = 10'h1;
+	    mem_ptr       =  {wbd_mem_adr_i[YCR1_WB_WIDTH-1:2], 2'b00};
 	end
 
         if (wbd_mem_stb_i && mem_req_ack && ~wbd_mem_we_i && !wbd_mem_lack_o) begin
             wbd_mem_ack_o   = #1 1'b1;
-            wbd_mem_dat_o   = ycr1_read_mem({wbd_mem_adr_i[YCR1_WB_WIDTH-1:7],mem_ptr[4:0], 2'b00}, wbd_mem_sel_i );
+            wbd_mem_dat_o   = ycr1_read_mem(mem_ptr, wbd_mem_sel_i );
 	    if(wbd_mem_bl_i == mem_bl_cnt)
                 wbd_mem_lack_o   = #1 1'b1;
 
 	    mem_bl_cnt    = mem_bl_cnt+1;
-	    mem_ptr       =  mem_ptr +1;
+	    mem_ptr       =  mem_ptr +4;
 	end else if (wbd_mem_stb_i && mem_req_ack && wbd_mem_we_i && !wbd_mem_lack_o) begin
             wbd_mem_ack_o   = #1 1'b1;
 	    if(wbd_mem_bl_i == mem_bl_cnt)
                 wbd_mem_lack_o   = #1 1'b1;
             for (int unsigned i=0; i<4; ++i) begin
                 if (wbd_mem_sel_i[i]) begin
-                     memory[{wbd_mem_adr_i[YCR1_WB_WIDTH-1:7], mem_ptr[4:0],2'b00}+i] = wbd_mem_dat_i[(8*(i+1)-1)-:8];
+                     memory[mem_ptr+i] = wbd_mem_dat_i[(8*(i+1)-1)-:8];
                 end
             end
 	    mem_bl_cnt    = mem_bl_cnt+1;
-	    mem_ptr       =  mem_ptr +1;
+	    mem_ptr       =  mem_ptr +4;
          end else begin
             wbd_mem_ack_o    = #1 1'b0;
             wbd_mem_lack_o   = #1 1'b0;

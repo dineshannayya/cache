@@ -50,7 +50,7 @@ logic   [31:0]             wb_app_adr_o; // address
 logic                      wb_app_we_o;  // write
 logic   [31:0]             wb_app_dat_o; // data output
 logic   [3:0]              wb_app_sel_o; // byte enable
-logic   [7:0]              wb_app_bl_o;  // Burst Length
+logic   [9:0]              wb_app_bl_o;  // Burst Length
 
 logic   [31:0]             wb_app_dat_i; // data input
 logic                      wb_app_ack_i; // acknowlegement
@@ -213,6 +213,8 @@ dcache_top #(
         ) u_core (
 	.mclk                (clk         )   , //Clock input 
 	.rst_n               (rst_n       )   , //Active Low Asynchronous Reset Signal Input
+
+	.cfg_pfet_dis        (1'b0        ),
 
         .wb_cpu_stb_i        (wb_cpu_stb_i)   , // strobe/request
         .wb_cpu_adr_i        (wb_cpu_adr_i)   , // address
