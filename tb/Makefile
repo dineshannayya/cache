@@ -22,53 +22,47 @@
 # Paths
 export ROOT_DIR := $(shell pwd)
 
+## Simulation mode: RTL/GL
+SIM?=RTL
+DUMP?=OFF
+
 
 # Targets
-.PHONY: clean dcache_rtl dcache_rtl_dump icache_rtl icache_rtl_dump gate help
+.PHONY: clean dcache icache gate synth help
 
-default: clean icache_rtl
+PATTERNS = dcache icache 
 
-dcache_rtl: clean  
+default: clean dcache
+
+$(PATTERNS): clean 
 	@echo "Generating Random Dump file"
 	gcc hex_gen.c -o hex_gen
 	./hex_gen > dumpfile.hex
-	@echo "Running Verilog Simulation"
-	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  dcache_tb_top.sv  -o dcache_tb_top.vvp
-	vvp dcache_tb_top.vvp
+ifeq ($(SIM),RTL)
+   ifeq ($(DUMP),OFF)
+	@echo "Running $@ Verilog Simulation"
+	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  $@_tb_top.sv  -o $@_tb_top.vvp
+	vvp $@_tb_top.vvp
+    else
+	@echo "Running $@ Verilog Simulation with waveform "
+	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -DWFDUMP -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  $@_tb_top.sv  -o $@_tb_top.vvp
+	vvp $@_tb_top.vvp
+    endif
+else
+	@echo "Running $@ Gate level Simulation"
+	iverilog -g2012  -D GL -D SPEEDSIM  -DFUNCTIONAL -DSIM  -I./ -I ../synth/netlist/  -I ../src/model -I $(PDK_ROOT)/sky130A  $@_tb_top.sv  -o $@_tb_top.vvp
+	vvp $@_tb_top.vvp
+endif
 
-dcache_rtl_dump: clean  
-	@echo "Generating Random Dump file"
-	gcc hex_gen.c -o hex_gen
-	./hex_gen > dumpfile.hex
-	@echo "Running Verilog Simulation"
-	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -DWFDUMP -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  dcache_tb_top.sv  -o dcache_tb_top.vvp
-	vvp dcache_tb_top.vvp
-
-icache_rtl: clean  
-	@echo "Generating Random Dump file"
-	gcc hex_gen.c -o hex_gen
-	./hex_gen > dumpfile.hex
-	@echo "Running Verilog Simulation"
-	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  icache_tb_top.sv  -o icache_tb_top.vvp
-	vvp icache_tb_top.vvp
-
-icache_rtl_dump: clean  
-	@echo "Generating Random Dump file"
-	gcc hex_gen.c -o hex_gen
-	./hex_gen > dumpfile.hex
-	@echo "Running Verilog Simulation"
-	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -DWFDUMP -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  icache_tb_top.sv  -o icache_tb_top.vvp
-	vvp icache_tb_top.vvp
-
-
-gate: clean  
-	iverilog -g2012  -D GL -D SPEEDSIM  -DFUNCTIONAL -DSIM  -I./ -I ../synth/netlist/  -I ../src/model -I $(PDK_ROOT)/sky130A  tb_top.sv  -o tb_top.vvp
-	vvp tb_top.vvp
 
 help:
-	@echo "To run RTL  simulation: make rtl"
-	@echo "To run RTL width waveform dump: make rtl_dump"
-	@echo "To run Gate simulation: make gate"
+	@echo "To run RTL  simulation: make dcache SIM=RTL"
+	@echo "To run RTL  simulation: make icache SIM=RTL"
+	@echo "To run RTL  simulation: make dcache SIM=RTL DUMP=ON"
+	@echo "To run RTL  simulation: make icache SIM=RTL DUMP=ON"
+	@echo "To run RTL  simulation: make dcache SIM=GL"
+	@echo "To run RTL  simulation: make icache SIM=GL"
+	@echo "Note: Before running gate sim make sure that you have completed synthesis"
 
 
 

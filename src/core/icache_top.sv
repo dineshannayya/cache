@@ -214,6 +214,7 @@ logic [$clog2(CACHESIZE)-1:0]     cache_mem_ptr            ; // Cache Memory Poi
 
 // Internal Signals derived from respective data or address buses
 logic	                          cache_hit                ;
+logic	                          cache_next_hit           ;
 
 
 logic [WB_AW-1:0]                cpu_addr                  ;
@@ -232,6 +233,8 @@ logic                             wb_cpu_ack1_o            ; // acknowlegement
 
 logic                             cache_refill_req         ; // Request for Refill of 32 location
 logic                             cache_prefill_req        ; // Request for complete prefill 32 x 16
+logic                             cache_busy               ; // Request for complete prefill 32 x 16
+
 
 // State Variables
 reg [3:0] state;

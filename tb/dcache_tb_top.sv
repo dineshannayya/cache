@@ -19,11 +19,25 @@
 //                                                              
 //  Test Bench Top
 ////////////////////////////////////////////////////////////////////
+`default_nettype none
 
-`include "dcache_tag_fifo.sv"
-`include "dcache_top.sv"
-`include "memory_tb_wb.sv"
-`include "sky130_sram_2kbyte_1rw1r_32x512_8.v"
+`timescale 1 ns / 1 ps
+
+`ifdef GL
+     `define UNIT_DELAY #0.1
+     `include "libs.ref/sky130_fd_sc_hd/verilog/primitives.v"
+     `include "libs.ref/sky130_fd_sc_hd/verilog/sky130_fd_sc_hd.v"
+     `include "libs.ref/sky130_fd_sc_hvl/verilog/primitives.v"
+    `include "dcache_top.gv"
+    `include "sky130_sram_2kbyte_1rw1r_32x512_8.v"
+    `include "memory_tb_wb.sv"
+
+`else
+    `include "dcache_tag_fifo.sv"
+    `include "dcache_top.sv"
+    `include "memory_tb_wb.sv"
+    `include "sky130_sram_2kbyte_1rw1r_32x512_8.v"
+`endif
 
 module tb_top;
 parameter CLK1_PERIOD = 10;
@@ -177,15 +191,15 @@ initial begin
       $display("###################################################");
       if(test_fail == 0) begin
          `ifdef GL
-             $display("Monitor: Standalone (GL) Passed");
+             $display("Monitor: Standalone dcache (GL) Passed");
          `else
-             $display("Monitor: Standalone (RTL) Passed");
+             $display("Monitor: Standalone dcache (RTL) Passed");
          `endif
       end else begin
           `ifdef GL
-              $display("Monitor: Standalone (GL) Failed");
+              $display("Monitor: Standalone dcache (GL) Failed");
           `else
-              $display("Monitor: Standalone (RTL) Failed");
+              $display("Monitor: Standalone dcache (RTL) Failed");
           `endif
        end
       $display("###################################################");

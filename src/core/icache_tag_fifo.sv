@@ -92,36 +92,38 @@ module icache_tag_fifo #(parameter WD=8, parameter DP=4) (
    logic [$clog2(DP)-1:0]     tag_wcnt;
    logic [WD-1 : 0]           tag_mem[DP-1 : 0];
 
-   // synopsys translate_off
-   initial begin
-      if (AW == 0) begin
-	 $display ("%m : ERROR!!! Fifo depth %d not in range 4 to 256", DP);
-	 $finish;
-      end // if (AW == 0)
-   end // initial begin
+   //// synopsys translate_off
+   //initial begin
+   //   if (AW == 0) begin
+   //      $display ("%m : ERROR!!! Fifo depth %d not in range 4 to 256", DP);
+   //      $finish;
+   //   end // if (AW == 0)
+   //end // initial begin
 
-   // synopsys translate_on
-   //
-   //
+   //// synopsys translate_on
+   ////
+   ////
 
 
    // Find any valid location matches with tag
-   genvar tcnt;
    generate
+   genvar tcnt;
    for (tcnt = 0; $unsigned(tcnt) < DP; tcnt=tcnt+1) begin : g_tag_check
-       type_icache_tag_mem_s mem_data;
+       logic [WD-1:0] mem_data;
        assign mem_data = tag_mem[tcnt];
-       assign tag_hit[tcnt] = mem_data.valid && (mem_data.tag == tag_cmp_data);
+       //assign tag_hit[tcnt] = mem_data.valid && (mem_data.tag == tag_cmp_data); - Yosys fix
+       assign tag_hit[tcnt] = mem_data[WD-1] && (mem_data[WD-2:0] == tag_cmp_data);
    end
    endgenerate
   
    // Check for Next Tag Hit 
-   genvar tcnt1;
    generate
+   genvar tcnt1;
    for (tcnt1 = 0; $unsigned(tcnt1) < DP; tcnt1=tcnt1+1) begin : g_tag1_check
-       type_icache_tag_mem_s mem_data;
+       logic [WD-1:0] mem_data;
        assign mem_data = tag_mem[tcnt1];
-       assign tag_next_hit[tcnt1] = mem_data.valid && (mem_data.tag == (tag_cmp_data+1));
+       //assign tag_next_hit[tcnt1] = mem_data.valid && (mem_data.tag == (tag_cmp_data+1)); - yosys fix
+       assign tag_next_hit[tcnt1] = mem_data[WD-1] && (mem_data[WD-2:0] == (tag_cmp_data+1));
    end
    endgenerate
 
