@@ -113,6 +113,9 @@
 ////  Revision :                                                  
 ////    0.1 - 19th Jan 2022, Dinesh A                             
 ////           Working initial version
+////    0.2 - 20th Jan 2022, Dinesh A                             
+////          moved the user cpu  wishbone interface to custom cpu interface and
+////          bug fix around buswidth
 ////
 //// ******************************************************************************************************
 
@@ -132,18 +135,16 @@ module icache_top #(
 	input logic                        cfg_pfet_dis,      // To disable Next Pre data Pre fetch, default = 0
 	input logic                        cfg_ntag_pfet_dis, // To disable next Tag refill, default = 0
 
-	// Wishbone CPU I/F
-        input logic                        wb_cpu_stb_i, // strobe/request
-        input logic   [WB_AW-1:0]          wb_cpu_adr_i, // address
-        input logic                        wb_cpu_we_i,  // write
-        input logic   [WB_DW-1:0]          wb_cpu_dat_i, // data output
-        input logic   [3:0]                wb_cpu_sel_i, // byte enable
+	//  CPU I/F
+        input logic                        cpu_mem_req, // strobe/request
+        input logic   [WB_AW-1:0]          cpu_mem_addr, // address
+        input logic   [1:0]                cpu_mem_width, // address
 
-        output logic   [WB_DW-1:0]         wb_cpu_dat_o, // data input
-        output logic                       wb_cpu_ack_o, // acknowlegement
-        output logic                       wb_cpu_err_o,  // error
+	output logic                       cpu_mem_req_ack, // Ack for Strob request accepted
+        output logic   [WB_DW-1:0]         cpu_mem_rdata, // data input
+        output logic  [1:0]                cpu_mem_resp, // acknowlegement
 
-	// Wishbone CPU I/F
+	// Wishbone Application I/F
         output logic                       wb_app_stb_o, // strobe/request
         output logic   [WB_AW-1:0]         wb_app_adr_o, // address
         output logic                       wb_app_we_o,  // write
@@ -217,7 +218,8 @@ logic	                          cache_hit                ;
 logic	                          cache_next_hit           ;
 
 
-logic [WB_AW-1:0]                cpu_addr                  ;
+logic [WB_AW-1:0]                cpu_addr_l                ;
+logic [1:0]                      cpu_width_l               ;
 logic [WB_AW-1:0]                cache_refill_addr         ;
 
 logic   [WB_DW-1:0]               prefetch_data            ; // Additional Prefetch on next location of current location
@@ -239,9 +241,50 @@ logic                             cache_busy               ; // Request for comp
 // State Variables
 reg [3:0] state;
 
+// Function
+
+function automatic logic[WB_DW-1:0] ycr1_conv_wb2mem_rdata (
+    input   logic [1:0]                 hwidth,
+    input   logic [1:0]                 haddr,
+    input   logic [WB_DW-1:0]  hrdata
+);
+    logic   [WB_DW-1:0]  tmp;
+begin
+    tmp = 'x;
+    case (hwidth)
+        2'b00 : begin
+            case (haddr)
+                2'b00 : tmp[7:0] = hrdata[7:0];
+                2'b01 : tmp[7:0] = hrdata[15:8];
+                2'b10 : tmp[7:0] = hrdata[23:16];
+                2'b11 : tmp[7:0] = hrdata[31:24];
+                default : begin
+                end
+            endcase
+        end
+        2'b01 : begin
+            case (haddr[1])
+                1'b0 : tmp[15:0] = hrdata[15:0];
+                1'b1 : tmp[15:0] = hrdata[31:16];
+                default : begin
+                end
+            endcase
+        end
+        2'b10 : begin
+            tmp = hrdata;
+        end
+        default : begin
+        end
+    endcase
+    ycr1_conv_wb2mem_rdata = tmp;
+end
+endfunction
+
+
+
 // Combinational Logic
 
-assign tag_cmp_data = cpu_addr[26:7];
+assign tag_cmp_data = cpu_addr_l[26:7];
 assign cache_hit = |tag_hit;
 assign cache_next_hit = |tag_next_hit;
 
@@ -249,19 +292,27 @@ wire [$clog2(CACHESIZE)-1:0]  next_prefetch_ptr = prefetch_ptr[4:0] + 1;
 
 // Cache Controller State Machine and Logic
 
+
+// Generate Response saying request is accepted
+assign cpu_mem_req_ack = (state == IDLE) && (
+	           (!cfg_pfet_dis && cpu_mem_req && prefetch_val && 
+		     (cpu_mem_addr[31:2] == {cpu_addr_l[31:7], prefetch_ptr[4:0]})) ||
+                   ( cpu_mem_req && (cpu_mem_resp == 2'b00)));
+
 always@(posedge mclk or negedge rst_n)
 begin
    if(!rst_n)
    begin
-      wb_cpu_dat_o      <= '0;
-      wb_cpu_ack_o      <= 1'b0;
+      cpu_mem_rdata     <= '0;
+      cpu_mem_resp      <= 2'b00;
 
       cache_mem_addr1   <= '0;
       cache_mem_csb1    <= 1'b1;
 
       cache_mem_ptr     <= '0;
 
-      cpu_addr          <= '0;
+      cpu_addr_l        <= '0;
+      cpu_width_l       <= '0;
 
       prefetch_data     <= '0;
       prefetch_ptr      <= '0;
@@ -284,11 +335,11 @@ begin
 
 	// Check if the current address is next location of same cache offset
 	// if yes, pick the data from prefetch content
-	 if(!cfg_pfet_dis && wb_cpu_stb_i && !wb_cpu_we_i && prefetch_val && 
-	     (wb_cpu_adr_i[31:2] == {cpu_addr[31:7], prefetch_ptr[4:0]})) begin
+	 if(!cfg_pfet_dis && cpu_mem_req && prefetch_val && 
+	     (cpu_mem_addr[31:2] == {cpu_addr_l[31:7], prefetch_ptr[4:0]})) begin
 	     // Ack with Prefect data
-              wb_cpu_dat_o     <= prefetch_data;
-	      wb_cpu_ack_o     <= 1'b1;
+              cpu_mem_rdata    <= ycr1_conv_wb2mem_rdata(cpu_mem_width,cpu_mem_addr[1:0], prefetch_data);
+	      cpu_mem_resp     <= 2'b01;
 
 	      // Goahead for next data prefetech in same cache index
 	      cache_mem_addr1  <= {prefetch_index,next_prefetch_ptr[4:0]}; // Address for additional prefetch;
@@ -297,19 +348,20 @@ begin
 	      state            <= PREFETCH_WAIT;
 
          end else begin
-	    wb_cpu_ack_o      <= 1'b0;
+	    cpu_mem_resp      <= 2'b00;
 	    cache_mem_addr1   <= '0;
 	    cache_mem_csb1    <= 1'b1;
 
-	    if(wb_cpu_stb_i && !wb_cpu_ack_o) begin
-	        cpu_addr         <= wb_cpu_adr_i;
+	    if(cpu_mem_req && (cpu_mem_resp == 2'b00)) begin
+	        cpu_addr_l       <= cpu_mem_addr;
+		cpu_width_l      <= cpu_mem_width;
 		prefetch_val     <= 1'b0;
 	        state            <= TAG_COMPARE;
 	    end else if(!cfg_ntag_pfet_dis && !cache_next_hit && !cache_busy) begin 
 	    // If there is no Next Tag Hit and cache fsm is free, the give
             // additional Next Tag Pre-fetech request
 	       cache_refill_req         <= 1;
-	       cache_refill_addr[31:27] <= cpu_addr[31:27];
+	       cache_refill_addr[31:27] <= cpu_addr_l[31:27];
 	       cache_refill_addr[26:7]  <= tag_cmp_data+1;
 	       cache_refill_addr[6:0]   <= '0;
 	       state                    <= NEXT_CACHE_REFILL_REQ;
@@ -322,15 +374,15 @@ begin
 	 1'd0:begin // If there is no Tag Hit
 	      if(cache_busy == 0) begin
 	        cache_refill_req  <= 1;
-		cache_refill_addr <= cpu_addr;
+		cache_refill_addr <= cpu_addr_l;
 	        state             <= CACHE_REFILL_WAIT;
 	     end
          end
 
 	 1'd1:	begin
-	      cache_mem_addr1  <= {tag_hindex,cpu_addr[6:2]};
+	      cache_mem_addr1  <= {tag_hindex,cpu_addr_l[6:2]};
 	      prefetch_index   <= tag_hindex;
-	      prefetch_ptr     <=  cpu_addr[6:2]+1;
+	      prefetch_ptr     <=  cpu_addr_l[6:2]+1;
 	      cache_mem_csb1    <= 1'b0;
 	      state             <= CACHE_RDATA_FETCH1; // Read Cache
 	  end
@@ -343,22 +395,22 @@ begin
 
        CACHE_RDATA_FETCH2: begin
 	  cache_mem_csb1   <= 1'b1;
-          wb_cpu_dat_o     <= cache_mem_dout1;
-	  wb_cpu_ack_o     <= 1'b1;
+          cpu_mem_rdata     <= ycr1_conv_wb2mem_rdata(cpu_width_l,cpu_addr_l[1:0], cache_mem_dout1); 
+	  cpu_mem_resp     <= 2'b01;
 	  state            <= CACHE_RDATA_FETCH3;
        end
        // Do Additial prefetech for next location
        CACHE_RDATA_FETCH3: begin
           prefetch_data    <= cache_mem_dout1;
           prefetch_val     <= 1'b1;
-	  wb_cpu_ack_o     <= 1'b0;
+	  cpu_mem_resp     <= 2'b00;
 	  state            <= IDLE;
        end
 
        // Additional Prefetch delay do to RAM access is take effectly two
        // cycle
        PREFETCH_WAIT: begin
-	  wb_cpu_ack_o     <= 1'b0;
+	  cpu_mem_resp     <= 2'b00;
 	  cache_mem_csb1   <= 1'b1;
 	  state            <= CACHE_RDATA_FETCH3;
       end
@@ -372,8 +424,8 @@ begin
 
      CACHE_REFILL_DONE: begin
 	  // Copy the snoop details from cache fsm
-	  wb_cpu_ack_o     <= wb_cpu_ack1_o;
-	  wb_cpu_dat_o     <= wb_cpu_dat1_o;
+	  cpu_mem_resp     <= (wb_cpu_ack1_o) ? 2'b01: 2'b00;
+	  cpu_mem_rdata     <= ycr1_conv_wb2mem_rdata(cpu_width_l,cpu_addr_l[1:0], wb_cpu_dat1_o);  
 	  if(cache_busy == 0) begin
 	     state       <= IDLE;
 	  end
@@ -403,16 +455,17 @@ begin
 
 
        default:begin
-          wb_cpu_dat_o      <= '0;
-          wb_cpu_ack_o      <= 1'b0;
+          cpu_mem_rdata     <= '0;
+          cpu_mem_resp      <= 2'b00;
        
           cache_mem_addr1   <= '0;
           cache_mem_csb1    <= 1'b1;
        
           cache_mem_ptr     <= '0;
        
-          cpu_addr          <= '0;
-       
+          cpu_addr_l        <= '0;
+          cpu_width_l       <= '0;
+
           state             <= IDLE;
        end
        endcase

@@ -196,7 +196,7 @@ begin
 	  // Check the Cache Refill Read Back address Matches with CPU
 	  // Address request
 	  if(wb_app_ack_i) begin 
-	     if({cache_mem_offset,cache_mem_ptr} == cpu_addr[6:2]) begin
+	     if(cache_mem_ptr == cpu_addr[6:2]) begin
 		wb_cpu_ack_o   <= 1'b1;
 		//As the current cpu request is read 
 		// then send read data to cpu and cache mem
@@ -254,6 +254,7 @@ begin
       // Additional state to make Sure that all the content are
       // update into tag and cache memory
       DONE: begin
+          wb_cpu_ack_o      <= 1'b0;
 	  tag_wr            <= 1'b0;
 	  cache_mem_csb0    <= 1'b1;
 	  cache_mem_web0    <= 1'b1;
