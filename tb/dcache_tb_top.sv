@@ -46,17 +46,16 @@ parameter CLK1_PERIOD = 10;
 logic			   clk         ; //Clock input 
 logic			   rst_n       ; //Active Low Asynchronous Reset Signal Input
 
-// Wishbone CPU I/F
-logic                      wb_cpu_stb_i; // strobe/request
-logic                      wb_cpu_cyc_i; // strobe/request
-logic   [31:0]             wb_cpu_adr_i; // address
-logic                      wb_cpu_we_i;  // write
-logic   [31:0]             wb_cpu_dat_i; // data output
-logic   [3:0]              wb_cpu_sel_i; // byte enable
+//  CPU I/F
+logic                      cpu_mem_req; // strobe/request
+logic   [31:0]             cpu_mem_addr; // address
+logic   [1:0]              cpu_mem_width; // address
+logic                      cpu_mem_cmd  ; // Command
+logic   [31:0]             cpu_mem_wdata; // data write
 
-logic   [31:0]             wb_cpu_dat_o; // data input
-logic                      wb_cpu_ack_o; // acknowlegement
-logic                      wb_cpu_err_o;  // error
+logic                      cpu_mem_req_ack; // Ack for Strob request accepted
+logic   [31:0]             cpu_mem_rdata; // data read
+logic  [1:0]               cpu_mem_resp; // acknowlegement
 
 // Wishbone CPU I/F
 logic                      wb_app_stb_o; // strobe/request
@@ -73,11 +72,37 @@ logic                      wb_app_err_i ;// error
 
 logic [31:0]               address;
 logic [3:0]                be;
+logic [1:0]                width;
 logic [31:0]               cmp_data;
 logic                      test_fail;
 logic  [31:0]              read_data     ;
 logic [7:0]                local_memory [0:8095];
 integer cnt;
+
+// Generate Wishbone Write Select
+function automatic logic[3:0] ycr1_conv_mem2wb_be (
+	input logic [1:0] hwidth,
+	input logic [1:0] haddr
+);
+logic [3:0] hbel_in;
+begin
+    hbel_in = 0;
+    case (hwidth)
+        2'b00 : begin
+            hbel_in = 4'b0001 << haddr[1:0];
+        end
+        2'b01 : begin
+            hbel_in = 4'b0011 << haddr[1:0];
+        end
+        2'b10 : begin
+            hbel_in = 4'b1111;
+        end
+    endcase
+    ycr1_conv_mem2wb_be = hbel_in;
+end
+endfunction
+
+
 
 always #(CLK1_PERIOD/2) clk  <= (clk === 1'b0);
 
@@ -85,12 +110,11 @@ always #(CLK1_PERIOD/2) clk  <= (clk === 1'b0);
 initial begin
 	clk = 0;
 	rst_n = 0;
-        wb_cpu_cyc_i ='h0;  // strobe/request
-        wb_cpu_stb_i ='h0;  // strobe/request
-        wb_cpu_adr_i ='h0;  // address
-        wb_cpu_we_i  ='h0;  // write
-        wb_cpu_dat_i ='h0;  // data output
-        wb_cpu_sel_i ='h0;  // byte enable
+        cpu_mem_req   ='h0;  // strobe/request
+        cpu_mem_addr   ='h0;  // address
+        cpu_mem_width  ='h0;  // write
+        cpu_mem_wdata  = 'h0;
+        cpu_mem_cmd    = 'h0; // Read
 	#100;
 	rst_n <= 1'b1;	    // Release reset
 	$readmemh("dumpfile.hex",u_tb_mem.memory);
@@ -111,7 +135,7 @@ initial begin
 	   	       u_tb_mem.memory[{7'b0,address[24:2],2'b0}+2],
 	   	       u_tb_mem.memory[{7'b0,address[24:2],2'b0}+1],
 	   	       u_tb_mem.memory[{7'b0,address[24:2],2'b0}+0]};
-	   wb_user_core_read_check({7'b0,address[24:2],2'b0},read_data,cmp_data);
+	   cpu_read_check({7'b0,address[24:2],2'b0},read_data,cmp_data);
            repeat (1) @(posedge clk);
 	end
 	
@@ -124,7 +148,7 @@ initial begin
 	   	       u_tb_mem.memory[{7'b0,address[24:2],2'b0}+2],
 	   	       u_tb_mem.memory[{7'b0,address[24:2],2'b0}+1],
 	   	       u_tb_mem.memory[{7'b0,address[24:2],2'b0}+0]};
-	   wb_user_core_read_check({7'b0,address[24:2],2'b0},read_data,cmp_data);
+	   cpu_read_check({7'b0,address[24:2],2'b0},read_data,cmp_data);
            repeat (1) @(posedge clk);
 	end
       $display("#####################################");
@@ -134,7 +158,8 @@ initial begin
       for(cnt = 0; cnt < 1024; cnt = cnt+1) begin
        	   address= cnt*4; // $random;
 	   cmp_data = $random;
-	   be = $random;
+	   width = $random;
+	   be = ycr1_conv_mem2wb_be(width,address[1:0]);
 	   if(be[0])
 	      local_memory[{19'b0,address[12:2],2'b0}+0] = cmp_data[7:0];
 	   if(be[1])
@@ -144,7 +169,7 @@ initial begin
 	   if(be[3])
 	      local_memory[{19'b0,address[12:2],2'b0}+3] = cmp_data[31:24];
 
-	   wb_user_core_write({19'b0,address[12:2],2'b0},be,cmp_data);
+	   cpu_write({19'b0,address[12:0]},width,cmp_data);
        end
       $display("#####################################");
       $display("       Testing Sequential Address Read Back  ...");
@@ -155,7 +180,7 @@ initial begin
 	    local_memory[{19'b0,address[12:2],2'b0}+2],
 	    local_memory[{19'b0,address[12:2],2'b0}+1],
 	    local_memory[{19'b0,address[12:2],2'b0}+0]};
-	   wb_user_core_read_check({19'b0,address[12:2],2'b0},read_data,cmp_data);
+	   cpu_read_check({19'b0,address[12:2],2'b0},read_data,cmp_data);
       end
       $display("#####################################");
       $display("       Testing Random Write Address ...");
@@ -165,7 +190,8 @@ initial begin
       for(cnt = 0; cnt < 128; cnt = cnt+1) begin
        	   address= $random;
 	   cmp_data = $random;
-	   be = $random;
+	   width = $random;
+	   be = ycr1_conv_mem2wb_be(width,address[1:0]);
 	   if(be[0])
 	      local_memory[{19'b0,address[12:2],2'b0}+0] = cmp_data[7:0];
 	   if(be[1])
@@ -175,7 +201,7 @@ initial begin
 	   if(be[3])
 	      local_memory[{19'b0,address[12:2],2'b0}+3] = cmp_data[31:24];
 
-	   wb_user_core_write({19'b0,address[12:2],2'b0},be,cmp_data);
+	   cpu_write({19'b0,address[12:0]},width,cmp_data);
        end
       $display("#####################################");
       $display("       Testing Random Address Read Back  ...");
@@ -186,7 +212,7 @@ initial begin
 	    local_memory[{19'b0,address[12:2],2'b0}+2],
 	    local_memory[{19'b0,address[12:2],2'b0}+1],
 	    local_memory[{19'b0,address[12:2],2'b0}+0]};
-	   wb_user_core_read_check({19'b0,address[12:2],2'b0},read_data,cmp_data);
+	   cpu_read_check({19'b0,address[12:2],2'b0},read_data,cmp_data);
       end
       $display("###################################################");
       if(test_fail == 0) begin
@@ -230,15 +256,15 @@ dcache_top #(
 
 	.cfg_pfet_dis        (1'b0        ),
 
-        .wb_cpu_stb_i        (wb_cpu_stb_i)   , // strobe/request
-        .wb_cpu_adr_i        (wb_cpu_adr_i)   , // address
-        .wb_cpu_we_i         (wb_cpu_we_i )   , // write
-        .wb_cpu_dat_i        (wb_cpu_dat_i)   , // data output
-        .wb_cpu_sel_i        (wb_cpu_sel_i)   , // byte enable
+        .cpu_mem_req          (cpu_mem_req),   // strobe/request
+	.cpu_mem_req_ack      (cpu_mem_req_ack),
+        .cpu_mem_addr         (cpu_mem_addr),  // address
+        .cpu_mem_width        (cpu_mem_width), // byte enable
+        .cpu_mem_cmd          (cpu_mem_cmd),   // cmd
+        .cpu_mem_wdata        (cpu_mem_wdata), // data input
                                           
-        .wb_cpu_dat_o        (wb_cpu_dat_o)   , // data input
-        .wb_cpu_ack_o        (wb_cpu_ack_o)   , // acknowlegement
-        .wb_cpu_err_o        (wb_cpu_err_o)   ,  // error
+        .cpu_mem_rdata        (cpu_mem_rdata), // data input
+        .cpu_mem_resp         (cpu_mem_resp), // acknowlegement
 
 	// Wishbone CPU I/F
         .wb_app_stb_o        (wb_app_stb_o)   , // strobe/request
@@ -292,62 +318,56 @@ ycr1_memory_tb_wb #(
 
 
 
-task wb_user_core_write;
+task cpu_write;
 input [31:0] address;
-input [3:0]  be;
+input [1:0]  width;
 input [31:0] data;
 begin
   repeat (1) @(posedge clk);
   #1;
-  wb_cpu_adr_i =address;  // address
-  wb_cpu_we_i  ='h1;  // write
-  wb_cpu_dat_i =data;  // data output
-  wb_cpu_sel_i =be;  // byte enable
-  wb_cpu_cyc_i ='h1;  // strobe/request
-  wb_cpu_stb_i ='h1;  // strobe/request
-  wait(wb_cpu_ack_o == 1);
+  cpu_mem_addr =address;  // address
+  cpu_mem_width =width;  
+  cpu_mem_cmd   = 1;
+  cpu_mem_wdata = data;
+  cpu_mem_req ='h1;  // strobe/request
+  wait(cpu_mem_req_ack == 1);
+  wait(cpu_mem_resp == 2'b01);
   repeat (1) @(posedge clk);
   #1;
-  wb_cpu_cyc_i ='h0;  // strobe/request
-  wb_cpu_stb_i ='h0;  // strobe/request
-  wb_cpu_adr_i ='h0;  // address
-  wb_cpu_we_i  ='h0;  // write
-  wb_cpu_dat_i ='h0;  // data output
-  wb_cpu_sel_i ='h0;  // byte enable
-  $display("DEBUG WB USER ACCESS WRITE Address : %x, Mask: %x Data : %x",address,be,data);
+  cpu_mem_req ='h0;  // strobe/request
+  cpu_mem_addr ='h0;  // address
+  cpu_mem_width ='h0;  // 32 Byte
+  cpu_mem_cmd   = 0;
+  $display("DEBUG CPU WRITE Address : %x, Mask: %x Data : %x",address,be,data);
   repeat (2) @(posedge clk);
 end
 endtask
 
-task  wb_user_core_read;
+task  cpu_read;
 input [31:0] address;
 output [31:0] data;
 reg    [31:0] data;
 begin
   repeat (1) @(posedge clk);
   #1;
-  wb_cpu_adr_i =address;  // address
-  wb_cpu_we_i  ='h0;  // write
-  wb_cpu_dat_i ='0;  // data output
-  wb_cpu_sel_i ='hF;  // byte enable
-  wb_cpu_cyc_i ='h1;  // strobe/request
-  wb_cpu_stb_i ='h1;  // strobe/request
-  wait(wb_cpu_ack_o == 1);
-  data  = wb_cpu_dat_o;  
+  cpu_mem_addr =address;  // address
+  cpu_mem_width =2'b10;  // 32 Byte
+  cpu_mem_cmd = 1'b0;
+  cpu_mem_req ='h1;  // strobe/request
+  wait(cpu_mem_req_ack == 1);
+  wait(cpu_mem_resp == 2'b01);
   repeat (1) @(posedge clk);
   #1;
-  wb_cpu_cyc_i ='h0;  // strobe/request
-  wb_cpu_stb_i ='h0;  // strobe/request
-  wb_cpu_adr_i ='h0;  // address
-  wb_cpu_we_i  ='h0;  // write
-  wb_cpu_dat_i ='h0;  // data output
-  wb_cpu_sel_i ='h0;  // byte enable
+  cpu_mem_req ='h0;  // strobe/request
+  cpu_mem_addr ='h0;  // address
+  cpu_mem_width ='h0;  // 32 Byte
+  data  = cpu_mem_rdata;  
   $display("DEBUG WB USER ACCESS READ Address : %x, Data : %x",address,data);
   repeat (2) @(posedge clk);
 end
 endtask
 
-task  wb_user_core_read_check;
+task  cpu_read_check;
 input [31:0] address;
 output [31:0] data;
 input [31:0] cmp_data;
@@ -355,27 +375,24 @@ reg    [31:0] data;
 begin
   repeat (1) @(posedge clk);
   #1;
-  wb_cpu_adr_i =address;  // address
-  wb_cpu_we_i  ='h0;  // write
-  wb_cpu_dat_i ='0;  // data output
-  wb_cpu_sel_i ='hF;  // byte enable
-  wb_cpu_cyc_i ='h1;  // strobe/request
-  wb_cpu_stb_i ='h1;  // strobe/request
-  wait(wb_cpu_ack_o == 1);
-  data  = wb_cpu_dat_o;  
+  cpu_mem_addr =address;  // address
+  cpu_mem_width =2'b10;  // 32 Byte
+  cpu_mem_req ='h1;  // strobe/request
+  wait(cpu_mem_req_ack == 1);
+  wait(cpu_mem_resp == 2'b01);
   repeat (1) @(posedge clk);
   #1;
-  wb_cpu_cyc_i ='h0;  // strobe/request
-  wb_cpu_stb_i ='h0;  // strobe/request
-  wb_cpu_adr_i ='h0;  // address
-  wb_cpu_we_i  ='h0;  // write
-  wb_cpu_dat_i ='h0;  // data output
-  wb_cpu_sel_i ='h0;  // byte enable
+  cpu_mem_req ='h0;  // strobe/request
+  cpu_mem_addr ='h0;  // address
+  cpu_mem_width ='h0;  // 32 Byte
+  data  = cpu_mem_rdata;  
+  repeat (1) @(posedge clk);
+  #1;
   if(data !== cmp_data) begin
-     $display("ERROR : WB USER ACCESS READ  Address : 0x%x, Exd: 0x%x Rxd: 0x%x ",address,cmp_data,data);
+     $display("ERROR : CPU  ACCESS READ  Address : 0x%x, Exd: 0x%x Rxd: 0x%x ",address,cmp_data,data);
      test_fail = 1;
   end else begin
-     $display("STATUS: WB USER ACCESS READ  Address : 0x%x, Data : 0x%x",address,data);
+     $display("STATUS: CPU USER ACCESS READ  Address : 0x%x, Data : 0x%x",address,data);
   end
   repeat (2) @(posedge clk);
 end

@@ -243,6 +243,7 @@ reg [3:0] state;
 
 // Function
 
+//Generate cpu read data based on width and address[1:0]
 function automatic logic[WB_DW-1:0] ycr1_conv_wb2mem_rdata (
     input   logic [1:0]                 hwidth,
     input   logic [1:0]                 haddr,
