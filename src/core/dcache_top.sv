@@ -134,7 +134,9 @@
 ////    0.2 - 20th Jan 2022, Dinesh A                             
 ////          moved the user cpu  wishbone interface to custom cpu interface and
 ////          bug fix around buswidth
-////
+////    0.3 - 22 Jan 2022, Dinesh A
+////          mem2wb & wb2mem conversion function added to handled cpu
+////           unaligned access
 //// ******************************************************************************************************
 
 `include "cache_defs.svh"
@@ -281,6 +283,54 @@ begin
 end
 endfunction
 
+function automatic logic[WB_DW-1:0] ycr1_conv_mem2wb_wdata (
+    input   logic [1:0]                    dmem_width,
+    input   logic   [1:0]                  dmem_addr,
+    input   logic   [YCR1_WB_WIDTH-1:0]    dmem_wdata
+);
+    logic   [YCR1_WB_WIDTH-1:0]  tmp;
+begin
+    tmp = 'x;
+    case (dmem_width)
+        2'b00 : begin
+            case (dmem_addr)
+                2'b00 : begin
+                    tmp[7:0]   = dmem_wdata[7:0];
+                end
+                2'b01 : begin
+                    tmp[15:8]  = dmem_wdata[7:0];
+                end
+                2'b10 : begin
+                    tmp[23:16] = dmem_wdata[7:0];
+                end
+                2'b11 : begin
+                    tmp[31:24] = dmem_wdata[7:0];
+                end
+                default : begin
+                end
+            endcase
+        end
+        2'b01 : begin
+            case (dmem_addr[1])
+                1'b0 : begin
+                    tmp[15:0]  = dmem_wdata[15:0];
+                end
+                1'b1 : begin
+                    tmp[31:16] = dmem_wdata[15:0];
+                end
+                default : begin
+                end
+            endcase
+        end
+        2'b10 : begin
+            tmp = dmem_wdata;
+        end
+        default : begin
+        end
+    endcase
+    ycr1_conv_mem2wb_wdata = tmp;
+end
+endfunction
 
 
 //Generate cpu read data based on width and address[1:0]
@@ -336,6 +386,9 @@ assign cpu_mem_req_ack = (state == IDLE) && (
                    ( cpu_mem_req && (cpu_mem_resp == 2'b00)));
 
 // Cache Controller State Machine and Logic
+
+wire [31:0] mem2wb_data  = ycr1_conv_mem2wb_wdata(cpu_width_l,cpu_addr_l[1:0], cpu_mem_wdata);
+wire [31:0] wb2mem_data  = ycr1_conv_wb2mem_rdata(cpu_width_l,cpu_addr_l[1:0], wb_app_dat_i);
 
 always@(posedge mclk or negedge rst_n)
 begin
@@ -476,7 +529,7 @@ begin
                  cache_mem_csb0    <= 1'b0;
                  cache_mem_web0    <= 1'b0;
                  cache_mem_wmask0  <= cpu_be_l;
-                 cache_mem_din0    <= cpu_mem_wdata;
+                 cache_mem_din0    <= mem2wb_data;
 	         state             <= IDLE;
 	     end else begin // cpu read access
 	          cache_mem_addr1  <= {tag_hindex,cpu_addr_l[6:2]};
@@ -547,29 +600,29 @@ begin
 		// Check if the current cpu request is read 
 		// then send read data to cpu and cache mem
 		if(!cpu_wr_l) begin 
-		    cpu_mem_rdata   <= wb_app_dat_i;
-		    cache_mem_din0 <= ycr1_conv_wb2mem_rdata(cpu_width_l,cpu_addr_l[1:0], wb_app_dat_i); 
+		    cpu_mem_rdata   <= wb2mem_data;
+		    cache_mem_din0  <=  wb_app_dat_i;
 		end else begin
 		   // If the current cpu request is write
 		   // then update the cache data based on the
 		   // byte select value
 		   if(cpu_be_l[0])
-		      cache_mem_din0[7:0]  <= cpu_mem_wdata[7:0];
+		      cache_mem_din0[7:0]  <= mem2wb_data[7:0];
 		   else
 		      cache_mem_din0[7:0]  <= wb_app_dat_i[7:0];
 
 		   if(cpu_be_l[1])
-		      cache_mem_din0[15:8]  <= cpu_mem_wdata[15:8];
+		      cache_mem_din0[15:8]  <= mem2wb_data[15:8];
 		   else
 		      cache_mem_din0[15:8]  <= wb_app_dat_i[15:8];
 
 		   if(cpu_be_l[2])
-		      cache_mem_din0[23:16]  <= cpu_mem_wdata[23:16];
+		      cache_mem_din0[23:16]  <= mem2wb_data[23:16];
 		   else
 		      cache_mem_din0[23:16]  <= wb_app_dat_i[23:16];
 
 		   if(cpu_be_l[3])
-		      cache_mem_din0[31:24]  <= cpu_mem_wdata[31:24];
+		      cache_mem_din0[31:24]  <= mem2wb_data[31:24];
 		   else
 		      cache_mem_din0[31:24]  <= wb_app_dat_i[31:24];
 	         end
