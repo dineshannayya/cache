@@ -137,11 +137,14 @@
 ////    0.3 - 22 Jan 2022, Dinesh A
 ////          mem2wb & wb2mem conversion function added to handled cpu
 ////           unaligned access
+////    0.3 - 22 Jan 2022, Dinesh A
+////          dmem cache write back bug fixes
 //// ******************************************************************************************************
 
 `include "cache_defs.svh"
 
 module dcache_top #(
+	 parameter DMEM_BASE  = 5'b00001,  // DMEM Base Address
 	 parameter WB_AW      = 32,
 	 parameter WB_DW      = 32,
 	 parameter TAG_MEM_WD = 22,
@@ -153,6 +156,8 @@ module dcache_top #(
 	input logic			   rst_n,	  //Active Low Asynchronous Reset Signal Input
 
 	input logic                        cfg_pfet_dis,      // To disable Next Pre data Pre fetch, default = 0
+	input logic                        cfg_force_flush,   // Flush all the content to memory with dirty
+	output logic                       force_flush_done,
 
 	//  CPU I/F
         input logic                        cpu_mem_req, // strobe/request
@@ -188,17 +193,21 @@ module dcache_top #(
 
 // State Machine Parameters
 
-localparam	IDLE		         = 4'd0,	//Please read Description for explanation of States and their operation
-		TAG_COMPARE	         = 4'd1,
-		CACHE_RDATA_FETCH1       = 4'd2,
-		CACHE_RDATA_FETCH2       = 4'd3,
-		CACHE_RDATA_FETCH3       = 4'd4,
-		PREFETCH_WAIT            = 4'd5,
-		CACHE_REFILL_REQ         = 4'd6,
-		CACHE_REFILL_ACTION	 = 4'd7,
-		CACHE_WRITE_BACK         = 4'd8,
-		CACHE_WRITE_BACK_ACTION1 = 4'd9,
-		CACHE_WRITE_BACK_ACTION2 = 4'd10;
+localparam	IDLE		         = 4'h0,	//Please read Description for explanation of States and their operation
+		TAG_COMPARE	         = 4'h1,
+		CACHE_RDATA_FETCH1       = 4'h2,
+		CACHE_RDATA_FETCH2       = 4'h3,
+		CACHE_RDATA_FETCH3       = 4'h4,
+		PREFETCH_WAIT            = 4'h5,
+		CACHE_REFILL_REQ         = 4'h6,
+		CACHE_REFILL_ACTION	 = 4'h7,
+		CACHE_WRITE_BACK         = 4'h8,
+		CACHE_WRITE_BACK_ACTION1 = 4'h9,
+		CACHE_WRITE_BACK_ACTION2 = 4'hA,
+	        CACHE_PREFILL_REQ        = 4'hB,
+	        CACHE_PREFILL_ACTION     = 4'hC,
+	        CACHE_FLUSH_ACTION       = 4'hD,
+	        CACHE_FLUSH_ACTION1      = 4'hE;
 
 // CACHE SRAM Memory I/F
 logic                             cache_mem_clk0           ; // CLK
@@ -254,9 +263,12 @@ logic   [WB_DW-1:0]               cache_mem_hdata          ; // Additional cache
 logic                             cache_mem_hval           ; // Holding Additional cache data valid
 
 logic                             wb_app_ack_l             ; // Register check if the ack is back to back
+logic                             cache_busy               ;
 
 // State Variables
 reg [3:0] state;
+reg [3:0] next_state;
+reg [5:0] flush_loc_cnt;
 
 // Func
 
@@ -415,6 +427,7 @@ begin
 
       cache_mem_offset  <= '0;
       cache_mem_ptr     <= '0;
+      cache_busy        <= 1'b1;
 
       tag_wr            <= 1'b0;
       tag_uwr           <= 1'b0;
@@ -432,8 +445,11 @@ begin
       prefetch_val      <= '0;
       cache_mem_hval    <= 1'b0;
       cache_mem_hdata   <= '0;
+      flush_loc_cnt     <= 6'h0;
+      force_flush_done  <= 1'b0;
 
-      state             <= IDLE;
+      state             <= CACHE_PREFILL_REQ;
+      next_state        <= IDLE; // This state used for special case only
 
    end else begin
       case(state)
@@ -451,6 +467,7 @@ begin
 	 cache_mem_wmask0  <= '0;
 	 cache_mem_addr0   <= '0;
 	 cache_mem_din0    <= '0;
+         cache_busy        <= 1'b0;
 
          cache_mem_offset  <= '0;
 	 cache_mem_ptr     <= '0;
@@ -486,7 +503,14 @@ begin
 	        cpu_be_l         <= ycr1_conv_mem2wb_be(cpu_mem_width,cpu_mem_addr[1:0]);
 		prefetch_val     <= 1'b0;
 	        state            <= TAG_COMPARE;
-	    end
+	     end else if(cfg_force_flush && !force_flush_done) begin
+		flush_loc_cnt    <= 'h0;
+		cache_mem_ptr    <= 'h0;
+	        state            <= CACHE_FLUSH_ACTION;
+	     end else if(!cfg_force_flush && force_flush_done) begin
+                 force_flush_done <= 1'b0; // Deassert flush done, cone config de-asserted
+	     end
+
 	 end
       end
 
@@ -498,7 +522,8 @@ begin
 	    // If there is free space
 	    if(!tag_full) begin 
 	       state  <= CACHE_REFILL_REQ;
-	    end else if(tag_cdirty) begin 
+	       cache_busy        <= 1'b1;
+	    end else if(tag_cval && tag_cdirty) begin 
 	    // If Tag Memory is already full, then replace last written
 	    // location and check current modifying location data is modified, then do
 	    // write back
@@ -507,9 +532,12 @@ begin
                 cache_mem_wmask0  <= 4'b1111;
                 cache_mem_addr0   <= {tag_cur_loc,cache_mem_ptr};
 	        cache_mem_ptr     <= cache_mem_ptr+1;
+		cache_busy        <= 1'b1;
 	        state             <= CACHE_WRITE_BACK;
+                next_state        <= CACHE_REFILL_REQ;
 	    end else begin
 	    // If current modifying location data is not modified, then do just refill
+	        cache_busy        <= 1'b1;
 		state <= CACHE_REFILL_REQ;
 	    end
          end
@@ -659,10 +687,10 @@ begin
            wb_app_stb_o      <= 1'b1;
            wb_app_we_o       <= 1'b1;
            wb_app_sel_o      <= 4'b1111;
-           wb_app_adr_o      <= {cpu_addr_l[31:27],app_mem_offset,5'b0,2'b0};
+           wb_app_adr_o      <= {DMEM_BASE,app_mem_offset,5'b0,2'b0};
            wb_app_bl_o       <= 32;
            wb_app_dat_o      <= cache_mem_dout0;
-	   wb_app_ack_l      <= 1'b0;
+	   wb_app_ack_l      <= 1'b1;
            cache_mem_addr0   <= {cache_mem_offset,cache_mem_ptr};
 	   cache_mem_ptr     <= cache_mem_ptr+1;
            cache_mem_hval    <= 1'b0;
@@ -676,11 +704,10 @@ begin
            if(wb_app_ack_i && !wb_app_lack_i) begin
               cache_mem_addr0  <= {cache_mem_offset,cache_mem_ptr};
               cache_mem_ptr    <= cache_mem_ptr+1;
-              wb_app_dat_o     <= cache_mem_hdata;
 	      if(wb_app_ack_l) begin // If back to back ack 
                  wb_app_dat_o     <= cache_mem_dout0;
                  cache_mem_hval   <= 1'b0;
-	      end else begin
+	      end else begin // Pick from previous holding data
                  cache_mem_hval   <= 1'b1;
                  wb_app_dat_o     <= cache_mem_hdata;
                  cache_mem_hdata  <= cache_mem_dout0;
@@ -696,10 +723,88 @@ begin
 	     cache_mem_csb0  <= 1'b1;
               wb_app_stb_o   <= 1'b0;
               cache_mem_ptr  <= '0;
-              state        <= CACHE_REFILL_REQ;
+              state          <= next_state;
            end
        end
-       
+
+       // Prefill all the cache location with 512 word burst command
+       CACHE_PREFILL_REQ: begin
+	      wb_app_stb_o      <= 1'b1;
+	      wb_app_we_o       <= 1'b0;
+	      wb_app_adr_o      <= {DMEM_BASE,20'h0,5'b0,2'b0};
+	      wb_app_sel_o      <= 4'b1111;
+	      wb_app_bl_o       <= 10'h200; // 512;	
+              cache_mem_ptr     <= '0;
+              cache_mem_offset  <= '0;
+	      state             <= CACHE_PREFILL_ACTION;
+       end
+       // CACHE Prefill action based on application ack
+       // Based on ack increment for ptr, 
+       // Once 32 ptr over increment cache_mem_loc
+//     // assumed that application only send 32 * 16 ack
+       CACHE_PREFILL_ACTION: begin
+          if(wb_app_ack_i) begin
+	     cache_mem_csb0    <= 1'b0;
+	     cache_mem_web0    <= 1'b0;
+	     cache_mem_wmask0  <= 4'b1111;
+	     cache_mem_addr0   <= {cache_mem_offset,cache_mem_ptr};
+	     cache_mem_din0    <= wb_app_dat_i;
+	     cache_mem_ptr     <= cache_mem_ptr+1;
+             if(cache_mem_ptr == 5'h1F) begin
+                cache_mem_offset <= cache_mem_offset +1;
+	        tag_wr           <= 1'b1;
+	        tag_wdata  <= {1'b1,16'h0,cache_mem_offset[3:0]};
+	     end else begin
+	        tag_wr           <= 1'b0;
+	     end
+	  end else begin
+	     tag_wr            <= 1'b0;
+	     cache_mem_csb0    <= 1'b1;
+	     cache_mem_web0    <= 1'b1;
+	  end
+
+	  // Update the Tag Memory
+	  if(wb_app_lack_i) begin
+	      wb_app_stb_o    <= 1'b0;
+	     state            <= IDLE;
+	  end
+       end
+
+       // Flush the content based on dirty bit
+       CACHE_FLUSH_ACTION: begin
+	     if(flush_loc_cnt != 6'h20) begin
+		  if(tag_cval && tag_cdirty) begin // If current loc data is modified
+	            cache_mem_offset  <= tag_cur_loc;
+	            app_mem_offset    <= tag_ctag;
+	            tag_wr            <= 1'b0;	     
+                    cache_mem_csb0    <= 1'b0;
+                    cache_mem_web0    <= 1'b1;
+                    cache_mem_wmask0  <= 4'b1111;
+                    cache_mem_addr0   <= {tag_cur_loc,cache_mem_ptr};
+	            cache_mem_ptr     <= cache_mem_ptr+1;
+		    cache_busy        <= 1'b1;
+		    state             <= CACHE_WRITE_BACK;
+	            next_state        <= CACHE_FLUSH_ACTION1;
+	         end else begin // Move to next tag
+		     cache_mem_ptr    <= 'h0;
+                     flush_loc_cnt    <= flush_loc_cnt + 1;
+		     tag_wdata        <= {tag_cval,tag_cdirty,tag_ctag}; // Don't change current content
+	             tag_wr           <= 1'b1;
+	         end
+	     end else begin
+		   force_flush_done   <= 1'b1;
+	           tag_wr             <= 1'b0;
+                   state              <= IDLE;
+	           next_state         <= IDLE;
+             end
+          end	     
+	  CACHE_FLUSH_ACTION1: begin
+                flush_loc_cnt  <= flush_loc_cnt + 1;
+		tag_wdata      <= {tag_cval,1'b0,tag_ctag}; // Remove Dirty Bit
+	        tag_wr         <= 1'b1;
+		state          <= CACHE_FLUSH_ACTION;
+	  end
+
        default:begin
           cpu_mem_rdata      <= '0;
           cpu_mem_resp       <= 2'b00;
@@ -759,6 +864,7 @@ dcache_tag_fifo #(.WD(TAG_MEM_WD), .DP(TAG_MEM_DP)) u_tag_fifo (
 	.tag_hindex          (tag_hindex),
 	.tag_ctag            (tag_ctag),
 	.tag_cdirty          (tag_cdirty),
+	.tag_cval            (tag_cval),
 
 
 	.full                (tag_full),

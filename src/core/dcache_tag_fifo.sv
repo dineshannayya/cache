@@ -81,6 +81,7 @@ module dcache_tag_fifo #(parameter WD=8, parameter DP=4) (
 	output logic [$clog2(DP)-1:0]     tag_hindex,    // Tag Hit Index
 	output logic [`TAG_XLEN-1:0]      tag_ctag,      // Current location Tag
 	output logic                      tag_cdirty,    // Current location Dirty indication
+	output logic                      tag_cval,      // Current location Valid
 
 
 	output logic             	  full,          // FIFO full
@@ -138,6 +139,7 @@ assign tag_hdirty = tag_hrdata.dirty;
 type_dcache_tag_mem_s  tag_crdata;   // Tag Hit Read Data
 assign tag_crdata  = tag_mem[tag_wptr];
 assign tag_cdirty = tag_crdata.dirty;  
+assign tag_cval = tag_crdata.valid;  
 assign tag_ctag = tag_crdata.tag;  
 
 
