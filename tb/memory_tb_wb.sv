@@ -141,7 +141,7 @@ assign mem_req_ack = (mem_req_ack_stall == 32'd0) ?  mem_req_ack_rnd : mem_req_a
 //-------------------------------------------------------------------------------
 logic       wbd_mem_stb_l;
 logic [9:0] mem_bl_cnt;
-logic [31:0] mem_ptr;
+logic [YCR1_MEM_POWER_SIZE-1:0] mem_ptr;
 
 wire wbd_mem_stb_pedge = (wbd_mem_stb_l == 1'b0) && wbd_mem_stb_i;
 always @(negedge rst_n, posedge clk) begin
@@ -157,7 +157,7 @@ always @(negedge rst_n, posedge clk) begin
 	wbd_mem_stb_l   = wbd_mem_stb_i;
 	if(wbd_mem_stb_pedge) begin
 	    mem_bl_cnt    = 10'h1;
-	    mem_ptr       =  {wbd_mem_adr_i[YCR1_WB_WIDTH-1:2], 2'b00};
+	    mem_ptr       =  {wbd_mem_adr_i[YCR1_MEM_POWER_SIZE-1:2], 2'b00};
 	end
 
         if (wbd_mem_stb_i && mem_req_ack && ~wbd_mem_we_i && !wbd_mem_lack_o) begin

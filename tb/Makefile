@@ -42,16 +42,16 @@ ifeq ($(SIM),RTL)
    ifeq ($(DUMP),OFF)
 	@echo "Running $@ Verilog Simulation"
 	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  $@_tb_top.sv  -o $@_tb_top.vvp
-	vvp $@_tb_top.vvp
+	vvp $@_tb_top.vvp | tee sim_result.log
     else
 	@echo "Running $@ Verilog Simulation with waveform "
 	iverilog -g2012  -D SPEEDSIM  -DFUNCTIONAL -DSIM -DWFDUMP -I./ -I ../src/core -I ../src/model -I $(PDK_ROOT)/sky130A  $@_tb_top.sv  -o $@_tb_top.vvp
-	vvp $@_tb_top.vvp
+	vvp $@_tb_top.vvp | tee sim_result.log
     endif
 else
 	@echo "Running $@ Gate level Simulation"
 	iverilog -g2012  -D GL -D SPEEDSIM  -DFUNCTIONAL -DSIM  -I./ -I ../synth/netlist/  -I ../src/model -I $(PDK_ROOT)/sky130A  $@_tb_top.sv  -o $@_tb_top.vvp
-	vvp $@_tb_top.vvp
+	vvp $@_tb_top.vvp | tee sim_result.log
 endif
 
 
@@ -72,3 +72,4 @@ clean:
 	$(RM) -R *.vvp
 	$(RM) -R *.vcd
 	$(RM) -R *.fst
+	$(RM) -R *.log

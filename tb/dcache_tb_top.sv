@@ -71,7 +71,8 @@ logic                      wb_app_lack_i;// last acknowlegement
 logic                      wb_app_err_i ;// error
 
 logic [31:0]               address;
-logic [3:0]                be;
+logic [3:0]                wb_be;
+logic [31:0]               wb_wdata;
 logic [1:0]                width;
 logic [31:0]               cmp_data;
 logic                      test_fail;
@@ -92,7 +93,7 @@ begin
             hbel_in = 4'b0001 << haddr[1:0];
         end
         2'b01 : begin
-            hbel_in = 4'b0011 << haddr[1:0];
+            hbel_in = 4'b0011 << {haddr[1],1'b0};
         end
         2'b10 : begin
             hbel_in = 4'b1111;
@@ -102,6 +103,54 @@ begin
 end
 endfunction
 
+function automatic logic[31:0] ycr1_conv_mem2wb_wdata (
+    input   logic [1:0]                    dmem_width,
+    input   logic   [1:0]                  dmem_addr,
+    input   logic   [31:0]    dmem_wdata
+);
+    logic   [31:0]  tmp;
+begin
+    tmp = 'x;
+    case (dmem_width)
+        2'b00 : begin
+            case (dmem_addr)
+                2'b00 : begin
+                    tmp[7:0]   = dmem_wdata[7:0];
+                end
+                2'b01 : begin
+                    tmp[15:8]  = dmem_wdata[7:0];
+                end
+                2'b10 : begin
+                    tmp[23:16] = dmem_wdata[7:0];
+                end
+                2'b11 : begin
+                    tmp[31:24] = dmem_wdata[7:0];
+                end
+                default : begin
+                end
+            endcase
+        end
+        2'b01 : begin
+            case (dmem_addr[1])
+                1'b0 : begin
+                    tmp[15:0]  = dmem_wdata[15:0];
+                end
+                1'b1 : begin
+                    tmp[31:16] = dmem_wdata[15:0];
+                end
+                default : begin
+                end
+            endcase
+        end
+        2'b10 : begin
+            tmp = dmem_wdata;
+        end
+        default : begin
+        end
+    endcase
+    ycr1_conv_mem2wb_wdata = tmp;
+end
+endfunction
 
 
 always #(CLK1_PERIOD/2) clk  <= (clk === 1'b0);
@@ -159,15 +208,17 @@ initial begin
        	   address= cnt*4; // $random;
 	   cmp_data = $random;
 	   width = $random;
-	   be = ycr1_conv_mem2wb_be(width,address[1:0]);
-	   if(be[0])
-	      local_memory[{19'b0,address[12:2],2'b0}+0] = cmp_data[7:0];
-	   if(be[1])
-	      local_memory[{19'b0,address[12:2],2'b0}+1] = cmp_data[15:8];
-	   if(be[2])
-	      local_memory[{19'b0,address[12:2],2'b0}+2] = cmp_data[23:16];
-	   if(be[3])
-	      local_memory[{19'b0,address[12:2],2'b0}+3] = cmp_data[31:24];
+	   if(width == 2'b11) width = 2'b10; // Valid option are 00,01,10
+	   wb_be    = ycr1_conv_mem2wb_be(width,address[1:0]);
+           wb_wdata =  ycr1_conv_mem2wb_wdata(width,address[1:0],cmp_data);
+	   if(wb_be[0])
+	      local_memory[{19'b0,address[12:2],2'b0}+0] = wb_wdata[7:0];
+	   if(wb_be[1])
+	      local_memory[{19'b0,address[12:2],2'b0}+1] = wb_wdata[15:8];
+	   if(wb_be[2])
+	      local_memory[{19'b0,address[12:2],2'b0}+2] = wb_wdata[23:16];
+	   if(wb_be[3])
+	      local_memory[{19'b0,address[12:2],2'b0}+3] = wb_wdata[31:24];
 
 	   cpu_write({19'b0,address[12:0]},width,cmp_data);
        end
@@ -182,6 +233,7 @@ initial begin
 	    local_memory[{19'b0,address[12:2],2'b0}+0]};
 	   cpu_read_check({19'b0,address[12:2],2'b0},read_data,cmp_data);
       end
+      
       $display("#####################################");
       $display("       Testing Random Write Address ...");
       $display("#####################################");
@@ -191,18 +243,21 @@ initial begin
        	   address= $random;
 	   cmp_data = $random;
 	   width = $random;
-	   be = ycr1_conv_mem2wb_be(width,address[1:0]);
-	   if(be[0])
-	      local_memory[{19'b0,address[12:2],2'b0}+0] = cmp_data[7:0];
-	   if(be[1])
-	      local_memory[{19'b0,address[12:2],2'b0}+1] = cmp_data[15:8];
-	   if(be[2])
-	      local_memory[{19'b0,address[12:2],2'b0}+2] = cmp_data[23:16];
-	   if(be[3])
-	      local_memory[{19'b0,address[12:2],2'b0}+3] = cmp_data[31:24];
+	   if(width == 2'b11) width = 2'b10; // Valid option are 00,01,10
+	   // Convert these to expected wishbone interface format
+	   wb_be    =  ycr1_conv_mem2wb_be(width,address[1:0]);
+           wb_wdata =  ycr1_conv_mem2wb_wdata(width,address[1:0],cmp_data);
+	   if(wb_be[0])
+	      local_memory[{19'b0,address[12:2],2'b0}+0] = wb_wdata[7:0];
+	   if(wb_be[1])
+	      local_memory[{19'b0,address[12:2],2'b0}+1] = wb_wdata[15:8];
+	   if(wb_be[2])
+	      local_memory[{19'b0,address[12:2],2'b0}+2] = wb_wdata[23:16];
+	   if(wb_be[3])
+	      local_memory[{19'b0,address[12:2],2'b0}+3] = wb_wdata[31:24];
 
 	   cpu_write({19'b0,address[12:0]},width,cmp_data);
-       end
+      end
       $display("#####################################");
       $display("       Testing Random Address Read Back  ...");
       $display("#####################################");
@@ -338,7 +393,7 @@ begin
   cpu_mem_addr ='h0;  // address
   cpu_mem_width ='h0;  // 32 Byte
   cpu_mem_cmd   = 0;
-  $display("DEBUG CPU WRITE Address : %x, Mask: %x Data : %x",address,be,data);
+  $display("DEBUG CPU WRITE Address : %x, Mem Width: %x Mem Data : %x",address,width,data);
   repeat (2) @(posedge clk);
 end
 endtask

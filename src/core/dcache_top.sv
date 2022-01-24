@@ -238,6 +238,7 @@ logic  [`TAG_XLEN-1:0]            tag_cmp_data             ; // Tag Compare Data
 logic [TAG_MEM_DP-1:0]            tag_hit                  ; // Tag Compare Hit 
 logic [$clog2(TAG_MEM_DP)-1:0]    tag_hindex               ; // Tag Hit Index
 logic                             tag_cdirty               ; // Current location Dirty indication
+logic                             tag_cval                 ;
 logic  [`TAG_XLEN-1:0]            tag_ctag                 ; // Tag Compare Data
 logic  [`TAG_XLEN-1:0]            app_mem_offset           ; // Tag Compare Data
 
@@ -285,7 +286,7 @@ begin
             hbel_in = 4'b0001 << haddr[1:0];
         end
         2'b01 : begin
-            hbel_in = 4'b0011 << haddr[1:0];
+            hbel_in = 4'b0011 << {haddr[1],1'b0};
         end
         2'b10 : begin
             hbel_in = 4'b1111;
@@ -298,9 +299,9 @@ endfunction
 function automatic logic[WB_DW-1:0] ycr1_conv_mem2wb_wdata (
     input   logic [1:0]                    dmem_width,
     input   logic   [1:0]                  dmem_addr,
-    input   logic   [YCR1_WB_WIDTH-1:0]    dmem_wdata
+    input   logic   [WB_DW-1:0]    dmem_wdata
 );
-    logic   [YCR1_WB_WIDTH-1:0]  tmp;
+    logic   [WB_DW-1:0]  tmp;
 begin
     tmp = 'x;
     case (dmem_width)
