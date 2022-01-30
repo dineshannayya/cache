@@ -141,7 +141,7 @@
 ////          dmem cache write back bug fixes
 //// ******************************************************************************************************
 
-`include "cache_defs.svh"
+`include "ycr1_cache_defs.svh"
 
 module dcache_top #(
 	 parameter DMEM_BASE  = 5'b00001,  // DMEM Base Address
