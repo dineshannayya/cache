@@ -718,14 +718,14 @@ begin
                  cache_mem_hdata  <= cache_mem_dout0;
                  cache_mem_hval   <= 1'b1;
               end
+              if(wb_app_lack_i) begin
+	        cache_mem_csb0  <= 1'b1;
+                 wb_app_stb_o   <= 1'b0;
+                 cache_mem_ptr  <= '0;
+                 state          <= next_state;
+              end
            end
        
-           if(wb_app_lack_i) begin
-	     cache_mem_csb0  <= 1'b1;
-              wb_app_stb_o   <= 1'b0;
-              cache_mem_ptr  <= '0;
-              state          <= next_state;
-           end
        end
 
        // Prefill all the cache location with 512 word burst command
