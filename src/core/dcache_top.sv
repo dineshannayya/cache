@@ -754,7 +754,7 @@ begin
              if(cache_mem_ptr == 5'h1F) begin
                 cache_mem_offset <= cache_mem_offset +1;
 	        tag_wr           <= 1'b1;
-	        tag_wdata  <= {1'b1,16'h0,cache_mem_offset[3:0]};
+	        tag_wdata  <= {1'b1,1'b0,16'h0,cache_mem_offset[3:0]};
 	     end else begin
 	        tag_wr           <= 1'b0;
 	     end
