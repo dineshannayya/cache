@@ -108,6 +108,12 @@ logic [$clog2(CACHESIZE)-1:0]     cache_mem_ptr            ; // Cache Memory Poi
 
 logic [1:0]                       state                    ;
 
+
+assign   cache_mem_clk0   = mclk;
+
+// in icache, there will not be no write back data
+assign wb_app_dat_o  = 'h0;
+
 always@(posedge mclk or negedge rst_n)
 begin
    if(!rst_n)
@@ -120,7 +126,6 @@ begin
       wb_app_adr_o      <= '0;
       wb_app_sel_o      <= '0;
       wb_app_bl_o       <= '0;
-      wb_app_dat_o      <= '0;
 
       cache_mem_csb0    <= 1'b1;
       cache_mem_web0    <= 1'b1; 

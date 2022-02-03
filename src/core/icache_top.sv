@@ -155,8 +155,22 @@ module icache_top #(
         input logic   [WB_DW-1:0]          wb_app_dat_i, // data input
         input logic                        wb_app_ack_i, // acknowlegement
         input logic                        wb_app_lack_i,// last acknowlegement
-        input logic                        wb_app_err_i  // error
+        input logic                        wb_app_err_i, // error
 
+        // CACHE SRAM Memory I/F
+        output logic                       cache_mem_clk0           , // CLK
+        output logic                       cache_mem_csb0           , // CS#
+        output logic                       cache_mem_web0           , // WE#
+        output logic   [8:0]               cache_mem_addr0          , // Address
+        output logic   [3:0]               cache_mem_wmask0         , // WMASK#
+        output logic   [31:0]              cache_mem_din0           , // Write Data
+        //input  logic   [31:0]            cache_mem_dout0          , // Read Data
+        
+        // SRAM-0 PORT-1, IMEM I/F
+        output logic                       cache_mem_clk1           , // CLK
+        output logic                       cache_mem_csb1           , // CS#
+        output logic  [8:0]                cache_mem_addr1          , // Address
+        input  logic  [31:0]               cache_mem_dout1           // Read Data
 
 );
 
@@ -178,20 +192,20 @@ localparam	IDLE		         = 4'd0,	//Please read Description for explanation of S
 		CACHE_PREFILL_DONE       = 4'd9,
 		NEXT_CACHE_REFILL_REQ    = 4'd10;
 
-// CACHE SRAM Memory I/F
-logic                             cache_mem_clk0           ; // CLK
-logic                             cache_mem_csb0           ; // CS#
-logic                             cache_mem_web0           ; // WE#
-logic   [8:0]                     cache_mem_addr0          ; // Address
-logic   [3:0]                     cache_mem_wmask0         ; // WMASK#
-logic   [31:0]                    cache_mem_din0           ; // Write Data
-logic   [31:0]                    cache_mem_dout0          ; // Read Data
-
-// SRAM-0 PORT-1, IMEM I/F
-logic                             cache_mem_clk1           ; // CLK
-logic                             cache_mem_csb1           ; // CS#
-logic  [8:0]                      cache_mem_addr1          ; // Address
-logic  [31:0]                     cache_mem_dout1          ; // Read Data
+//// CACHE SRAM Memory I/F
+//logic                             cache_mem_clk0           ; // CLK
+//logic                             cache_mem_csb0           ; // CS#
+//logic                             cache_mem_web0           ; // WE#
+//logic   [8:0]                     cache_mem_addr0          ; // Address
+//logic   [3:0]                     cache_mem_wmask0         ; // WMASK#
+//logic   [31:0]                    cache_mem_din0           ; // Write Data
+//logic   [31:0]                    cache_mem_dout0          ; // Read Data
+//
+//// SRAM-0 PORT-1, IMEM I/F
+//logic                             cache_mem_clk1           ; // CLK
+//logic                             cache_mem_csb1           ; // CS#
+//logic  [8:0]                      cache_mem_addr1          ; // Address
+//logic  [31:0]                     cache_mem_dout1          ; // Read Data
 
 // Tag Memory Wire decleration
 logic 	                          tag_wr                   ; // Tag Write Indication
@@ -236,6 +250,9 @@ logic                             wb_cpu_ack1_o            ; // acknowlegement
 logic                             cache_refill_req         ; // Request for Refill of 32 location
 logic                             cache_prefill_req        ; // Request for complete prefill 32 x 16
 logic                             cache_busy               ; // Request for complete prefill 32 x 16
+
+
+assign cache_mem_clk1 = mclk;
 
 
 // State Variables
@@ -551,6 +568,7 @@ icache_tag_fifo #(.WD(TAG_MEM_WD), .DP(TAG_MEM_DP)) u_tag_fifo (
 	.empty               ()
 	  );
 
+/***
 // 2KB SRAM Cache memory
 sky130_sram_2kbyte_1rw1r_32x512_8 u_cmem_2kb(
 `ifdef USE_POWER_PINS
@@ -571,7 +589,7 @@ sky130_sram_2kbyte_1rw1r_32x512_8 u_cmem_2kb(
     .addr1    (cache_mem_addr1),
     .dout1    (cache_mem_dout1)
   );
-
+***/
 // END OF MODULE
 endmodule
 
