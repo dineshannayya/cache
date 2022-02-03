@@ -182,7 +182,7 @@ module dcache_top #(
         input logic   [WB_DW-1:0]          wb_app_dat_i, // data input
         input logic                        wb_app_ack_i, // acknowlegement
         input logic                        wb_app_lack_i,// last acknowlegement
-        input logic                        wb_app_err_i  // error
+        input logic                        wb_app_err_i, // error
 
         // CACHE SRAM Memory I/F
         output logic                       cache_mem_clk0           , // CLK
