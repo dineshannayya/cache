@@ -697,6 +697,7 @@ begin
 
        // Write back the cache memory data to application memory
        CACHE_WRITE_BACK: begin
+	   tag_wr            <= 'h0;
            cache_mem_addr0   <= {cache_mem_offset,cache_mem_ptr};
 	   cache_mem_ptr     <= cache_mem_ptr+1;
            state             <= CACHE_WRITE_BACK_ACTION1;
@@ -804,11 +805,13 @@ begin
 		    cache_busy        <= 1'b1;
 		    state             <= CACHE_WRITE_BACK;
 	            next_state        <= CACHE_FLUSH_ACTION1;
+		    tag_wdata         <= {tag_cval,1'b0,tag_ctag}; // Remove Dirty Bit
+	            tag_wr            <= 1'b1;
 	         end else begin // Move to next tag
 		     cache_mem_ptr    <= 'h0;
-                     flush_loc_cnt    <= flush_loc_cnt + 1;
 		     tag_wdata        <= {tag_cval,tag_cdirty,tag_ctag}; // Don't change current content
 	             tag_wr           <= 1'b1;
+		     state            <= CACHE_FLUSH_ACTION1;
 	         end
 	     end else begin
 		   force_flush_done   <= 1'b1;
@@ -817,10 +820,9 @@ begin
 	           next_state         <= IDLE;
              end
           end	     
-	  CACHE_FLUSH_ACTION1: begin
+	  CACHE_FLUSH_ACTION1: begin // Dummy cycle to tag update
+	        tag_wr         <= 1'b0;
                 flush_loc_cnt  <= flush_loc_cnt + 1;
-		tag_wdata      <= {tag_cval,1'b0,tag_ctag}; // Remove Dirty Bit
-	        tag_wr         <= 1'b1;
 		state          <= CACHE_FLUSH_ACTION;
 	  end
 
